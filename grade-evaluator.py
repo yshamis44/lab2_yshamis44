@@ -7,29 +7,88 @@ def load_csv_data():
     Prompts the user for a filename, checks if it exists, 
     and extracts all fields into a list of dictionaries.
     """
-    filename = input("Enter the name of the CSV file to process (e.g., grades.csv): ")
-    
+    filename = input("Enter the name of the CSV file to process (e.g., grades.csv): ").strip()
+
+    # nothing typed, no point going further
+    if filename == "":
+        print("Error: no filename was typed. Example: grades.csv")
+        sys.exit(1)
+
     if not os.path.exists(filename):
         print(f"Error: The file '{filename}' was not found.")
         sys.exit(1)
-        
+
+    # this catches an empty CSV (0 bytes) and stops it
+    if os.path.getsize(filename) == 0:
+        print(f"Error: The file '{filename}' is empty. Add some grades and try again.")
+        sys.exit(1)
+
     assignments = []
-    
+    skipped = 0
+
     try:
         with open(filename, mode='r', encoding='utf-8') as file:
             reader = csv.DictReader(file)
+
+            # make sure the 4 columns we need are in the header
+            header = reader.fieldnames or []
+            for column in ['assignment', 'group', 'score', 'weight']:
+                if column not in header:
+                    print(f"Error: the column '{column}' is missing.")
+                    print("The first line must be: assignment,group,score,weight")
+                    sys.exit(1)
+
+            line = 1
             for row in reader:
+                line += 1
+                name = (row['assignment'] or '').strip()
+                group = (row['group'] or '').strip().capitalize()
+                score_text = (row['score'] or '').strip()
+                weight_text = (row['weight'] or '').strip()
+
+                # a row with only commas, skip it
+                if name == '' and group == '' and score_text == '' and weight_text == '':
+                    print(f"Warning: line {line} is empty, skipping it.")
+                    skipped += 1
+                    continue
+
+                if name == '':
+                    print(f"Warning: line {line} has no assignment name, skipping it.")
+                    skipped += 1
+                    continue
+
+                if group != 'Formative' and group != 'Summative':
+                    print(f"Warning: line {line} ({name}) has group '{row['group']}', it must be Formative or Summative. Skipping it.")
+                    skipped += 1
+                    continue
+
                 # Convert numeric fields to floats for calculations
+                try:
+                    score = float(score_text)
+                    weight = float(weight_text)
+                except ValueError:
+                    print(f"Warning: line {line} ({name}) has score '{score_text}' and weight '{weight_text}'. Both must be numbers like 85 and 20. Skipping it.")
+                    skipped += 1
+                    continue
+
                 assignments.append({
-                    'assignment': row['assignment'],
-                    'group': row['group'],
-                    'score': float(row['score']),
-                    'weight': float(row['weight'])
+                    'assignment': name,
+                    'group': group,
+                    'score': score,
+                    'weight': weight
                 })
-        return assignments
     except Exception as e:
         print(f"An error occurred while reading the file: {e}")
         sys.exit(1)
+
+    if skipped > 0:
+        print(f"{skipped} bad row(s) were skipped.")
+
+    if len(assignments) == 0:
+        print("Error: there are no valid grade rows in the file.")
+        sys.exit(1)
+
+    return assignments
 
 def evaluate_grades(data):
     """
